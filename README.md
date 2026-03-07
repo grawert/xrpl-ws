@@ -1,9 +1,8 @@
 # xrpl-ws
 
 Lightweight async WebSocket client for the XRP Ledger. Supports requests,
-subscriptions, and automatic reconnection with exponential backoff.
-Reconnects automatically on network interruption. Active subscriptions are
-replayed after reconnect.
+subscriptions, and automatic reconnection. Reconnects automatically on network
+interruption. Active subscriptions are replayed after reconnect.
 
 ## Installation
 
@@ -26,6 +25,21 @@ use xrpl::{XrplClient, types::Amount, types::builders::PaymentBuilder};
 let client = XrplClient::new("wss://xrplcluster.com").await?;
 ```
 
+### Configuration
+
+For custom configuration, use `with_config()`:
+
+```rust
+use xrpl::{ClientConfig, ConnectionPools, LoadBalancing};
+
+let config = ClientConfig::new()
+    .with_request_timeout_secs(60)
+    .with_pools(1, 4, 2)  // priority, trading, bulk connections
+    .with_load_balancing(LoadBalancing::RoundRobin);
+
+let client = XrplClient::with_config("wss://xrplcluster.com", config).await?;
+```
+
 ### Query account info
 
 ```rust
@@ -41,22 +55,35 @@ println!("Balance: {}", info.account_data.balance);
 ### Subscribe to ledger closes
 
 ```rust
-let (initial, mut rx) = client.subscribe(LedgerSubscription).await?;
-
-while let Ok(msg) = rx.recv().await {
+let (initial, mut handle) = client.subscribe(LedgerSubscription::new()).await?;
+let mut count = 0;
+while let Ok(msg) = handle.receiver().recv().await {
     println!("Ledger {} closed", msg.ledger_index);
+    count += 1;
+    if count >= 5 {
+        // Unsubscribe explicitly (optional, will also happen on drop)
+        handle.unsubscribe().await?;
+        break;
+    }
 }
 ```
 
 ### Subscribe to account transactions
 
 ```rust
-let (_, mut rx) = client.subscribe(AccountTransactionsSubscription {
-    accounts: vec!["rU6K7V3Po4snVhBBaU29sesqs2qTQJWDw1".into()],
-}).await?;
+let (_, mut handle) = client
+    .subscribe(AccountTransactionsSubscription::new(
+        vec!["rU6K7V3Po4snVhBBaU29sesqs2qTQJWDw1".into()],
+    ).map_err(|e| anyhow!(e))?)
+    .await?;
 
-while let Ok(tx) = rx.recv().await {
-    println!("Transaction: {:?}", tx);
+while let Ok(msg) = handle.receiver().recv().await {
+    if msg.validated {
+        println!("Transaction is validated: {}", msg.hash);
+        println!("Amount: {}", msg.amount);
+    } else {
+        println!("Transaction not yet validated: {}", msg.hash);
+    }
 }
 ```
 
