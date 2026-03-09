@@ -1,5 +1,6 @@
-Cargo.lock
-/target
 .swp
 .envrc
 .DS_Store
+Cargo.lock
+target/
+.devcontainer/
