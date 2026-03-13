@@ -1,9 +1,8 @@
 # xrpl-ws
 
 Lightweight async WebSocket client for the XRP Ledger. Supports requests,
-subscriptions, and automatic reconnection with exponential backoff.
-Reconnects automatically on network interruption. Active subscriptions are
-replayed after reconnect.
+subscriptions, and automatic reconnection. Reconnects automatically on network
+interruption. Active subscriptions are replayed after reconnect.
 
 ## Installation
 
@@ -15,7 +14,7 @@ xrpl-ws = "0.1"
 Imports as `xrpl`:
 
 ```rust
-use xrpl::{XrplClient, types::Amount, types::builders::PaymentBuilder};
+use xrpl::{Client, types::Amount, types::builders::PaymentBuilder};
 ```
 
 ## Usage
@@ -23,12 +22,28 @@ use xrpl::{XrplClient, types::Amount, types::builders::PaymentBuilder};
 ### Connect
 
 ```rust
-let client = XrplClient::new("wss://xrplcluster.com").await?;
+let client = Client::new("wss://xrplcluster.com");
+```
+
+### Configuration
+
+For custom configuration, use `with_config()`:
+
+```rust
+use xrpl::{Client, ClientConfig};
+
+let config = ClientConfig::new()
+    .with_request_timeout_secs(60)
+    .subscription_channel_size(128);
+
+let client = Client::with_config("wss://xrplcluster.com", config);
 ```
 
 ### Query account info
 
 ```rust
+use xrpl::request::account_info::AccountInfoRequest;
+
 let response = client.request(AccountInfoRequest {
     account: "rU6K7V3Po4snVhBBaU29sesqs2qTQJWDw1".into(),
     ..Default::default()
@@ -41,22 +56,48 @@ println!("Balance: {}", info.account_data.balance);
 ### Subscribe to ledger closes
 
 ```rust
-let (initial, mut rx) = client.subscribe(LedgerSubscription).await?;
+use xrpl::subscriptions::LedgerSubscription;
 
-while let Ok(msg) = rx.recv().await {
+let (initial, mut handle) = client.subscribe(LedgerSubscription::new()).await?;
+let mut count = 0;
+while let Ok(msg) = handle.recv().await {
     println!("Ledger {} closed", msg.ledger_index);
+    count += 1;
+    if count >= 5 {
+        // Close explicitly (optional, will also happen on drop)
+        handle.close();
+        break;
+    }
 }
 ```
 
 ### Subscribe to account transactions
 
 ```rust
-let (_, mut rx) = client.subscribe(AccountTransactionsSubscription {
-    accounts: vec!["rU6K7V3Po4snVhBBaU29sesqs2qTQJWDw1".into()],
-}).await?;
+use anyhow::anyhow;
+use xrpl::subscriptions::AccountTransactionsSubscription;
 
-while let Ok(tx) = rx.recv().await {
-    println!("Transaction: {:?}", tx);
+let (_, mut handle) = client
+    .subscribe(AccountTransactionsSubscription::proposed(
+        vec!["rU6K7V3Po4snVhBBaU29sesqs2qTQJWDw1".into()],
+    ).map_err(|e| anyhow!(e))?)
+    .await?;
+
+while let Ok(msg) = handle.recv().await {
+    if msg.validated {
+        println!("Transaction is validated: {}", msg.hash);
+        
+        if let TransactionType::Payment { amount, deliver_max, .. } =
+         msg.tx_json.transaction_type {
+            let payment_amount = amount
+                .or(deliver_max)
+                .unwrap_or_else(|| Amount::Xrpl("0".to_string()));
+
+            eprintln!("Transaction amount: {}", payment_amount);
+        }
+    } else {
+        println!("Transaction not yet validated: {}", msg.hash);
+    }
 }
 ```
 
@@ -64,16 +105,15 @@ while let Ok(tx) = rx.recv().await {
 
 Signing requires implementing the `SigningContext` trait for your wallet type.
 The process follows the XRPL signing protocol: serialize the transaction with
-a 4-byte prefix (`53545800`), sign the bytes, attach the signature, then
+a 4-byte prefix (`HASH_PREFIX_TRANSACTION_SIGN`), sign the bytes, attach the signature, then
 serialize the final blob for submission.
 
 ```rust
 use anyhow::anyhow;
 use ripple_keypairs::{PrivateKey, PublicKey};
-use rippled_binary_codec::serialize::serialize_tx;
+use xrpl_mithril_codec::serializer::serialize_tx;
+use xrpl_mithril_codec::signing::HASH_PREFIX_TRANSACTION_SIGN;
 use xrpl::types::{Transaction, SigningContext};
-
-const STX_PREFIX: &str = "53545800";
 
 struct Wallet {
     public_key: PublicKey,
@@ -94,7 +134,9 @@ impl SigningContext for Wallet {
             .ok_or_else(|| anyhow!("Failed to serialize transaction for signing"))?;
 
         // Prepend the XRPL signing prefix and sign
-        let signing_bytes = hex::decode(format!("{}{}", STX_PREFIX, tx_hex))?;
+        let mut signing_bytes = Vec::with_capacity(4 + tx_hex.len() / 2);
+        signing_bytes.extend_from_slice(&HASH_PREFIX_TRANSACTION_SIGN);
+        signing_bytes.extend_from_slice(&hex::decode(tx_hex)?);
         let signature = self.private_key.sign(&signing_bytes);
 
         // Attach signature and serialize the final blob (canonical = false)
@@ -110,6 +152,10 @@ impl SigningContext for Wallet {
 Build the transaction, sign it, and submit:
 
 ```rust
+use xrpl::types::builders::PaymentBuilder;
+use xrpl::request::submit::SubmitRequest;
+use xrpl::{xrp, drops};
+
 let wallet = Wallet { public_key, private_key };
 
 let payment = PaymentBuilder::new(
@@ -133,7 +179,18 @@ including key derivation, transaction building, signing, and submission.
 ### Amount helpers
 
 ```rust
+use xrpl::{xrp, drops, issued};
+
 xrp!(1.99)                                 // 1.99 XRP
 drops!(12)                                 // 12 drops
 issued!(100.0, "USD", "rIssuerAddress...") // issued currency
+```
+
+### Running integration tests
+
+```bash
+export TEST_SEED="sEd.."
+export TEST_SEED_2="sEd.."
+
+cargo test -- --ignored --nocapture
 ```
