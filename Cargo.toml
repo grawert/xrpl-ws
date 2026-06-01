@@ -2,22 +2,30 @@
 name = "xrpl-ws"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
 authors = ["Uwe Grawert"]
 description = "Websocket client library for the XRP Ledger"
 repository = "https://github.com/grawert/xrpl-ws"
 license = "MIT"
+readme = "README.md"
+keywords = ["xrpl", "xrp-ledger", "websocket", "blockchain", "crypto"]
+categories = ["network-programming", "asynchronous", "web-programming::websocket"]
 
 [lib]
 name = "xrpl"
 
+[features]
+jsondump = []
+
 [dev-dependencies]
-hex = "0.4"
+sha2 = "0.10"
 anyhow = "1.0"
-rippled_binary_codec = "0.0.5"
+serial_test = "3"
+xrpl-mithril = "0.5.3"
 xrpl-keypairs = { git = "https://github.com/grawert/xrpl-keypairs-rust" }
 
 [dependencies]
-uuid = { version = "1.3.1", features = ["v4"] }
+hex = "0.4"
 thiserror = "1.0"
 
 # runtime
