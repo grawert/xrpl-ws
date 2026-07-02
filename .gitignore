@@ -1,6 +1,53 @@
-.swp
-.envrc
+# OS
 .DS_Store
-Cargo.lock
+Thumbs.db
+*~
+
+# Editor temp files
+.swp
+*.pdb
+*.log
+
+# Environment
+.env
+.envrc
+
+# IDE config files
+.vscode/
+.idea/
+*.iml
+.eclipse/
+.settings/
+.project
+.classpath
+nbproject/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# AI agent config files
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.claude/
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.windsurfrules
+.aider*
+.continue/
+.codeium/
+.github/copilot-instructions.md
+.gemini/
+.openclaw/
+.opencode/
+
+# Rust
 target/
+**/*.rs.bk
+Cargo.lock
+
+# Dev containers
 .devcontainer/

@@ -1,0 +1,43 @@
+mod common;
+
+use xrpl::{Client, request::server_state::ServerStateRequest};
+use common::*;
+
+#[tokio::test]
+async fn test_server_state_request() {
+    let client = Client::new(server_url());
+    let response = client
+        .request(&ServerStateRequest::default())
+        .await
+        .expect("server_state request failed");
+    let result = response
+        .result()
+        .expect("Could not get result from server_state response");
+    let state = &result.state;
+
+    // Assert that some key fields are present and valid
+    assert!(
+        !state.build_version.is_empty(),
+        "build_version should not be empty"
+    );
+    assert!(
+        !state.complete_ledgers.is_empty(),
+        "complete_ledgers should not be empty"
+    );
+    assert!(state.peers > 0, "peers should be greater than 0");
+    assert!(!state.server_state.is_empty(), "server_state should not be empty");
+    assert!(state.uptime > 0, "uptime should be greater than 0");
+    assert!(
+        state.validation_quorum > 0,
+        "validation_quorum should be greater than 0"
+    );
+    assert!(
+        state
+            .validated_ledger
+            .as_ref()
+            .expect("validated_ledger should be present")
+            .seq
+            > 0,
+        "validated_ledger.seq should be greater than 0"
+    );
+}
