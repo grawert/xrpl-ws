@@ -1,0 +1,18 @@
+{
+  "projectTitle": "xrpl-ws",
+  "description": "Async WebSocket client library for the XRP Ledger",
+  "folders": [
+    "docs",
+    "README.md"
+  ],
+  "excludeFiles": [
+    "architecture.md",
+    "asset-handling.md",
+    "coding-standards.md",
+    "development.md",
+    "xrpl-skill.md",
+    "resources.md",
+    "security.md"
+  ],
+  "previousVersions": []
+}
